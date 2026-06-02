@@ -1,6 +1,7 @@
 const express = require('express');
 const app = express();
 const http = require('http');
+const path = require('path');
 const { Server } = require("socket.io");
 
 const server = http.createServer(app);
@@ -11,7 +12,7 @@ const io = new Server(server, {
   }
 });
 
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
 let transmitterId = null;
 let observerCount = 0;

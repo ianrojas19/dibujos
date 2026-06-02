@@ -28,11 +28,13 @@
             <p class="text-gray-600 mb-8">Selecciona tu rol para comenzar la dinámica.</p>
             
             <div class="space-y-4">
-                <button id="btn-transmitter" class="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-indigo-500/30 transition-all transform hover:-translate-y-1">
-                    🎥 Soy Transmisor
+                <button id="btn-transmitter" class="w-full flex items-center justify-center gap-3 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-indigo-500/30 transition-all transform hover:-translate-y-1">
+                    <span id="text-transmitter">🎥 Soy Transmisor</span>
+                    <div id="spin-transmitter" class="hidden animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
                 </button>
-                <button id="btn-observer" class="w-full py-4 bg-teal-500 hover:bg-teal-600 text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-teal-500/30 transition-all transform hover:-translate-y-1">
-                    👀 Soy Observador
+                <button id="btn-observer" class="w-full flex items-center justify-center gap-3 py-4 bg-teal-500 hover:bg-teal-600 text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-teal-500/30 transition-all transform hover:-translate-y-1">
+                    <span id="text-observer">👀 Soy Observador</span>
+                    <div id="spin-observer" class="hidden animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
                 </button>
             </div>
             

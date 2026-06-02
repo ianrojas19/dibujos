@@ -30,8 +30,28 @@ const configuration = {
 
 // --- ROLE SELECTION ---
 
+function setLoading(btnId, isLoading) {
+    const btn = document.getElementById(btnId);
+    const text = document.getElementById(btnId.replace('btn-', 'text-'));
+    const spin = document.getElementById(btnId.replace('btn-', 'spin-'));
+    
+    if (isLoading) {
+        btn.disabled = true;
+        btn.classList.add('opacity-75', 'cursor-not-allowed');
+        text.textContent = 'Conectando...';
+        spin.classList.remove('hidden');
+    } else {
+        btn.disabled = false;
+        btn.classList.remove('opacity-75', 'cursor-not-allowed');
+        text.textContent = btnId === 'btn-transmitter' ? '🎥 Soy Transmisor' : '👀 Soy Observador';
+        spin.classList.add('hidden');
+    }
+}
+
 btnTransmitter.addEventListener('click', () => {
+    setLoading('btn-transmitter', true);
     socket.emit('joinAsTransmitter', (response) => {
+        setLoading('btn-transmitter', false);
         if (response.success) {
             myRole = 'transmitter';
             showVideoInterface('🎥 Transmitiendo Dibujo');
@@ -44,7 +64,9 @@ btnTransmitter.addEventListener('click', () => {
 });
 
 btnObserver.addEventListener('click', () => {
+    setLoading('btn-observer', true);
     socket.emit('joinAsObserver', (response) => {
+        setLoading('btn-observer', false);
         if (response.success) {
             myRole = 'observer';
             showVideoInterface('👀 Vista de Observador');
