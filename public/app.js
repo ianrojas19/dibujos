@@ -220,6 +220,7 @@ function initPeerConnection(transmitterId) {
         if (myRole === 'observer') {
             waitingMessage.classList.add('hidden');
             mainVideo.srcObject = event.streams[0];
+            mainVideo.play().catch(e => console.log('Autoplay bloqueado o en proceso:', e));
         }
     };
 }
@@ -260,6 +261,6 @@ socket.on('candidate', async (data) => {
             }
         }
     } catch (e) {
-        console.error('Error agregando candidato ICE', e);
+        console.error('Error agregando candidato ICE. Asegúrate de tener remoteDescription:', e);
     }
 });
