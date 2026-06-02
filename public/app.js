@@ -21,6 +21,8 @@ let myRole = null; // 'transmitter' | 'observer'
 let localStream = null;
 let peerConnections = {}; // targetId -> RTCPeerConnection (For transmitter)
 let peerConnection = null; // Single RTCPeerConnection (For observer)
+let iceCandidateQueue = []; // Queue for observer
+let iceCandidateQueues = {}; // targetId -> [] Queue for transmitter
 
 // STUN servers for WebRTC (public google stun server)
 const configuration = {
@@ -126,12 +128,18 @@ socket.on('transmitterDisconnected', () => {
 socket.on('newObserverReady', async (observerId) => {
     if (myRole === 'transmitter' && localStream) {
         try {
-            console.log("Creando conexión para nuevo observador:", observerId);
+            console.log(`[WebRTC] Creando conexión para nuevo observador: ${observerId}`);
             const pc = new RTCPeerConnection(configuration);
             peerConnections[observerId] = pc;
+            iceCandidateQueues[observerId] = [];
+
+            pc.oniceconnectionstatechange = () => {
+                console.log(`[WebRTC - ICE State] Transmisor hacia ${observerId}:`, pc.iceConnectionState);
+            };
 
             pc.onicecandidate = (event) => {
                 if (event.candidate) {
+                    console.log(`[WebRTC] Transmisor generó candidato ICE para ${observerId}`);
                     socket.emit('candidate', { target: observerId, candidate: event.candidate });
                 }
             };
@@ -140,15 +148,17 @@ socket.on('newObserverReady', async (observerId) => {
                 pc.addTrack(track, localStream);
             });
 
+            console.log(`[WebRTC] Creando Oferta para ${observerId}`);
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
             
+            console.log(`[WebRTC] Oferta enviada a ${observerId}`);
             socket.emit('offer', { target: observerId, offer: offer });
             
             // Re-enviar el blur actual al nuevo observador
             socket.emit('updateBlur', blurSlider.value);
         } catch (e) {
-            console.error('Error al crear oferta para nuevo observador:', e);
+            console.error('[WebRTC Error] Error al crear oferta para nuevo observador:', e);
         }
     }
 });
@@ -208,19 +218,28 @@ function initPeerConnection(transmitterId) {
         peerConnection.close();
     }
     
+    iceCandidateQueue = [];
     peerConnection = new RTCPeerConnection(configuration);
+
+    peerConnection.oniceconnectionstatechange = () => {
+        console.log(`[WebRTC - ICE State] Observador hacia transmisor:`, peerConnection.iceConnectionState);
+    };
 
     peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
+            console.log(`[WebRTC] Observador generó candidato ICE para transmisor`);
             socket.emit('candidate', { target: transmitterId, candidate: event.candidate });
         }
     };
 
     peerConnection.ontrack = (event) => {
+        console.log(`[WebRTC] ¡Track de video/audio recibido en el observador!`);
         if (myRole === 'observer') {
             waitingMessage.classList.add('hidden');
             mainVideo.srcObject = event.streams[0];
-            mainVideo.play().catch(e => console.log('Autoplay bloqueado o en proceso:', e));
+            mainVideo.play()
+                .then(() => console.log(`[WebRTC] Reproducción automática iniciada con éxito.`))
+                .catch(e => console.error('[WebRTC Error] Autoplay bloqueado o en proceso:', e));
         }
     };
 }
@@ -228,39 +247,86 @@ function initPeerConnection(transmitterId) {
 socket.on('offer', async (data) => {
     if (myRole === 'observer') {
         const transmitterId = data.senderId;
+        console.log(`[WebRTC] Oferta recibida del transmisor: ${transmitterId}`);
         initPeerConnection(transmitterId);
         
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        
-        socket.emit('answer', { target: transmitterId, answer: answer });
+        try {
+            console.log(`[WebRTC] Procesando Oferta (setRemoteDescription)...`);
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+            
+            console.log(`[WebRTC] Creando Respuesta (Answer)...`);
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            
+            console.log(`[WebRTC] Enviando Respuesta al transmisor`);
+            socket.emit('answer', { target: transmitterId, answer: answer });
+
+            // Procesar candidatos encolados
+            console.log(`[WebRTC] Procesando ${iceCandidateQueue.length} candidatos ICE encolados...`);
+            for (let candidate of iceCandidateQueue) {
+                await peerConnection.addIceCandidate(candidate);
+            }
+            iceCandidateQueue = [];
+        } catch (e) {
+            console.error('[WebRTC Error] Error al procesar oferta:', e);
+        }
     }
 });
 
 socket.on('answer', async (data) => {
     if (myRole === 'transmitter') {
         const observerId = data.senderId;
+        console.log(`[WebRTC] Respuesta recibida del observador: ${observerId}`);
         const pc = peerConnections[observerId];
+        
         if (pc && pc.signalingState !== 'stable') {
-            await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+            try {
+                console.log(`[WebRTC] Procesando Respuesta para ${observerId} (setRemoteDescription)...`);
+                await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+
+                // Procesar candidatos encolados
+                const queue = iceCandidateQueues[observerId] || [];
+                console.log(`[WebRTC] Procesando ${queue.length} candidatos ICE encolados de ${observerId}...`);
+                for (let candidate of queue) {
+                    await pc.addIceCandidate(candidate);
+                }
+                iceCandidateQueues[observerId] = [];
+            } catch (e) {
+                console.error('[WebRTC Error] Error al procesar respuesta del observador:', e);
+            }
         }
     }
 });
 
 socket.on('candidate', async (data) => {
     try {
+        const candidate = new RTCIceCandidate(data.candidate);
+        
         if (myRole === 'transmitter') {
-            const pc = peerConnections[data.senderId];
+            const observerId = data.senderId;
+            console.log(`[WebRTC] Candidato ICE recibido de observador ${observerId}`);
+            const pc = peerConnections[observerId];
             if (pc) {
-                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+                if (pc.remoteDescription && pc.remoteDescription.type) {
+                    await pc.addIceCandidate(candidate);
+                } else {
+                    console.log(`[WebRTC] Encolando candidato ICE de ${observerId}`);
+                    if (!iceCandidateQueues[observerId]) iceCandidateQueues[observerId] = [];
+                    iceCandidateQueues[observerId].push(candidate);
+                }
             }
         } else if (myRole === 'observer') {
+            console.log(`[WebRTC] Candidato ICE recibido del transmisor`);
             if (peerConnection) {
-                await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                if (peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
+                    await peerConnection.addIceCandidate(candidate);
+                } else {
+                    console.log(`[WebRTC] Encolando candidato ICE del transmisor`);
+                    iceCandidateQueue.push(candidate);
+                }
             }
         }
     } catch (e) {
-        console.error('Error agregando candidato ICE. Asegúrate de tener remoteDescription:', e);
+        console.error('[WebRTC Error] Error agregando candidato ICE:', e);
     }
 });
