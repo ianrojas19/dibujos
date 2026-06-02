@@ -19,7 +19,8 @@ const observerStatus = document.getElementById('observer-status');
 // State
 let myRole = null; // 'transmitter' | 'observer'
 let localStream = null;
-let peerConnection = null;
+let peerConnections = {}; // targetId -> RTCPeerConnection (For transmitter)
+let peerConnection = null; // Single RTCPeerConnection (For observer)
 
 // STUN servers for WebRTC (public google stun server)
 const configuration = {
@@ -121,19 +122,40 @@ socket.on('transmitterDisconnected', () => {
     }
 });
 
-// Cuando un nuevo observador se conecta, el transmisor debe regenerar la oferta WebRTC
-socket.on('newObserverReady', async () => {
-    if (myRole === 'transmitter' && peerConnection) {
+// Cuando un nuevo observador se conecta, el transmisor debe generarle una oferta WebRTC exclusiva
+socket.on('newObserverReady', async (observerId) => {
+    if (myRole === 'transmitter' && localStream) {
         try {
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-            socket.emit('offer', offer);
+            console.log("Creando conexión para nuevo observador:", observerId);
+            const pc = new RTCPeerConnection(configuration);
+            peerConnections[observerId] = pc;
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('candidate', { target: observerId, candidate: event.candidate });
+                }
+            };
+
+            localStream.getTracks().forEach(track => {
+                pc.addTrack(track, localStream);
+            });
+
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            
+            socket.emit('offer', { target: observerId, offer: offer });
             
             // Re-enviar el blur actual al nuevo observador
             socket.emit('updateBlur', blurSlider.value);
         } catch (e) {
             console.error('Error al crear oferta para nuevo observador:', e);
         }
+    }
+});
+
+socket.on('transmitterReady', () => {
+    if (myRole === 'observer') {
+        socket.emit('observerReady');
     }
 });
 
@@ -153,16 +175,9 @@ async function startTransmission() {
         mainVideo.srcObject = localStream;
         mainVideo.muted = true; // Just to avoid any unwanted sounds
 
-        initPeerConnection();
-        
-        localStream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localStream);
-        });
-
-        // Crear la primera oferta para los observadores actuales
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
-        socket.emit('offer', offer);
+        // No creamos conexiones genéricas, esperamos que los observadores llamen a newObserverReady.
+        // Pero notificamos a la sala que ya estamos listos. (El servidor ya hizo un broadcast al hacer joinAsTransmitter,
+        // pero por si acaso, lo manejamos vía el evento emitido por el server 'transmitterReady').
 
     } catch (err) {
         console.error('Error accediendo a la cámara:', err);
@@ -186,9 +201,9 @@ socket.on('blurUpdate', (blurVal) => {
     }
 });
 
-// --- WEBRTC LOGIC ---
+// --- WEBRTC LOGIC (OBSERVER) ---
 
-function initPeerConnection() {
+function initPeerConnection(transmitterId) {
     if (peerConnection) {
         peerConnection.close();
     }
@@ -197,7 +212,7 @@ function initPeerConnection() {
 
     peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
-            socket.emit('candidate', event.candidate);
+            socket.emit('candidate', { target: transmitterId, candidate: event.candidate });
         }
     };
 
@@ -209,31 +224,42 @@ function initPeerConnection() {
     };
 }
 
-socket.on('offer', async (offer) => {
+socket.on('offer', async (data) => {
     if (myRole === 'observer') {
-        if (!peerConnection) initPeerConnection();
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+        const transmitterId = data.senderId;
+        initPeerConnection(transmitterId);
+        
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
-        socket.emit('answer', answer);
+        
+        socket.emit('answer', { target: transmitterId, answer: answer });
     }
 });
 
-socket.on('answer', async (answer) => {
+socket.on('answer', async (data) => {
     if (myRole === 'transmitter') {
-        // Solo aplicar si estamos en un estado donde esperamos answer
-        if (peerConnection.signalingState !== 'stable') {
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        const observerId = data.senderId;
+        const pc = peerConnections[observerId];
+        if (pc && pc.signalingState !== 'stable') {
+            await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
         }
     }
 });
 
-socket.on('candidate', async (candidate) => {
-    if (peerConnection) {
-        try {
-            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-        } catch (e) {
-            console.error('Error agregando candidato ICE', e);
+socket.on('candidate', async (data) => {
+    try {
+        if (myRole === 'transmitter') {
+            const pc = peerConnections[data.senderId];
+            if (pc) {
+                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+            }
+        } else if (myRole === 'observer') {
+            if (peerConnection) {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+            }
         }
+    } catch (e) {
+        console.error('Error agregando candidato ICE', e);
     }
 });

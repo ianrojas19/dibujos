@@ -38,6 +38,14 @@ io.on('connection', (socket) => {
       hasTransmitter: transmitterId !== null,
       observerCount: observerCount
     });
+
+    socket.to('observers').emit('transmitterReady');
+  });
+
+  socket.on('observerReady', () => {
+    if (transmitterId !== null) {
+      socket.to('transmitter').emit('newObserverReady', socket.id);
+    }
   });
 
   socket.on('joinAsObserver', (callback) => {
@@ -51,25 +59,35 @@ io.on('connection', (socket) => {
       observerCount: observerCount
     });
     
+    // Notificamos al transmisor específicamente QUIÉN entró
     if (transmitterId !== null) {
-      socket.to('transmitter').emit('newObserverReady');
+      socket.to('transmitter').emit('newObserverReady', socket.id);
     }
   });
 
-  // WebRTC Signaling
+  // WebRTC Signaling Direccional (1 a 1 para cada conexión)
   socket.on('offer', (data) => {
-    socket.to('observers').emit('offer', data);
+    socket.to(data.target).emit('offer', {
+      offer: data.offer,
+      senderId: socket.id
+    });
   });
 
   socket.on('answer', (data) => {
-    socket.to('transmitter').emit('answer', data);
+    socket.to(data.target).emit('answer', {
+      answer: data.answer,
+      senderId: socket.id
+    });
   });
 
   socket.on('candidate', (data) => {
-    socket.broadcast.emit('candidate', data);
+    socket.to(data.target).emit('candidate', {
+      candidate: data.candidate,
+      senderId: socket.id
+    });
   });
 
-  // Blur Control
+  // Blur Control (Mantenemos broadcast porque es global para todos los observadores)
   socket.on('updateBlur', (blurValue) => {
     if (socket.id === transmitterId) {
       socket.to('observers').emit('blurUpdate', blurValue);
