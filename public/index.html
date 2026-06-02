@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adivina el Dibujo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-blue-50 min-h-screen font-sans text-gray-800 flex flex-col">
+    
+    <!-- HEADER -->
+    <header class="bg-white shadow-sm p-4 sticky top-0 z-10">
+        <div class="max-w-4xl mx-auto flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-blue-600">🎨 Adivina el Dibujo</h1>
+            <div id="status-bar" class="text-sm font-medium flex gap-4 hidden">
+                <span id="transmitter-status" class="px-3 py-1 bg-red-100 text-red-700 rounded-full">Sin Transmisor</span>
+                <span id="observer-status" class="px-3 py-1 bg-green-100 text-green-700 rounded-full">0 Observadores</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto p-4 flex flex-col items-center mt-6 w-full flex-1">
+        
+        <!-- PANTALLA DE INICIO: SELECCIÓN DE ROL -->
+        <div id="role-selection" class="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 text-center transition-all duration-300">
+            <h2 class="text-3xl font-extrabold mb-6 text-gray-800">¡Bienvenido!</h2>
+            <p class="text-gray-600 mb-8">Selecciona tu rol para comenzar la dinámica.</p>
+            
+            <div class="space-y-4">
+                <button id="btn-transmitter" class="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-indigo-500/30 transition-all transform hover:-translate-y-1">
+                    🎥 Soy Transmisor
+                </button>
+                <button id="btn-observer" class="w-full py-4 bg-teal-500 hover:bg-teal-600 text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-teal-500/30 transition-all transform hover:-translate-y-1">
+                    👀 Soy Observador
+                </button>
+            </div>
+            
+            <p id="role-error" class="text-red-500 mt-4 text-sm hidden font-medium"></p>
+        </div>
+
+        <!-- PANTALLA PRINCIPAL: VIDEO -->
+        <div id="video-container" class="w-full bg-white rounded-2xl shadow-xl p-4 md:p-8 hidden flex-col items-center">
+            <h2 id="view-title" class="text-xl font-bold mb-4 text-gray-700"></h2>
+            
+            <div class="relative w-full max-w-3xl bg-black rounded-xl overflow-hidden shadow-inner flex items-center justify-center video-aspect">
+                <!-- Mensaje de espera para observador -->
+                <div id="waiting-message" class="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 text-white z-10 hidden">
+                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-white mb-4"></div>
+                    <p class="text-lg font-medium text-center px-4">Esperando al transmisor...<br><span class="text-sm text-gray-300">Asegúrate de que haya uno conectado.</span></p>
+                </div>
+
+                <video id="main-video" autoplay playsinline class="w-full h-full object-cover"></video>
+            </div>
+
+            <!-- CONTROLES DEL TRANSMISOR -->
+            <div id="transmitter-controls" class="w-full max-w-3xl mt-6 p-6 bg-indigo-50 rounded-xl border border-indigo-100 hidden shadow-sm">
+                <div class="flex flex-col gap-4">
+                    <label for="blur-slider" class="font-bold text-indigo-900 flex justify-between text-lg">
+                        <span>🪄 Desenfoque en pantallas (Blur)</span>
+                        <span id="blur-value" class="text-indigo-600 font-extrabold bg-white px-3 rounded-md shadow-sm">0px</span>
+                    </label>
+                    <input type="range" id="blur-slider" min="0" max="20" value="0" class="w-full h-3 bg-indigo-200 rounded-lg appearance-none cursor-pointer outline-none shadow-inner">
+                    <p class="text-sm text-indigo-700 font-medium">Mueve el control para que los observadores vean más o menos borroso en tiempo real.</p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
